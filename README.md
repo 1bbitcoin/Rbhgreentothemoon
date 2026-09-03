@@ -1,26 +1,9 @@
-# Ready to Build
+Every AI bull run has the same problem: the story is in the chip, but the story worth trading is in the box.
 
-Saya memiliki ini yang siap di build
+Nobody memes an accelerator. Nobody prints a chart off a wafer fab. But a server rack — humming, glowing, fed nonstop by a backlog that keeps growing quarter after quarter — that's a story with a face.
 
-This project was built with [Lovable](https://lovable.dev).
+Dell just posted one of the loudest AI infrastructure quarters on record: tens of billions in AI orders, a backlog north of $90B, guidance raised while the tape still flinched. That's not a rumor. That's a filed number. And numbers that big deserve a shrine, not a footnote.
 
-**Live app**: https://joyful-build-factory.lovable.app
+$AIBOX isn't trying to be Dell. It's trying to be the room Dell's headline lives in — the meme built for the exact moment retail realizes infrastructure, not just the chip, is where the next leg of the AI trade gets told. No utility. No promises. Just a chart built to move with the same narrative gravity as the backlog it's named after.
 
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/829e65ec-7511-4cca-a321-1f7cd615e856).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
-```
+The box doesn't ship excuses. It ships.
