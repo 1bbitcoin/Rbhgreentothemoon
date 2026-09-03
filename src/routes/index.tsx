@@ -183,314 +183,581 @@ function AskTheBox() {
 function HotTokens() {
   const [rows, setRows] = useState<HotToken[] | null>(null);
   const [failed, setFailed] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const previousRanks = useRef<Record<string, number>>({});
-  const previousChanges = useRef<Record<string, number>>({});
+  const [lastUpdated, setLastUpdated] =
+    useState<Date | null>(null);
 
-  const [rankMovement, setRankMovement] = useState<
-    Record<string, "up" | "down" | "same">
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const previousRanks = useRef<
+    Record<string, number>
   >({});
 
-  const [priceMovement, setPriceMovement] = useState<
-    Record<string, "up" | "down" | "same">
+  const previousChanges = useRef<
+    Record<string, number>
   >({});
 
-  useEffect(() => {
-    let cancelled = false;
+  const [rankMovement, setRankMovement] =
+    useState<
+      Record<
+        string,
+        "up" | "down" | "same"
+      >
+    >({});
 
-    const loadHotTokens = async () => {
-      if (cancelled) return;
+  const [priceMovement, setPriceMovement] =
+    useState<
+      Record<
+        string,
+        "up" | "down" | "same"
+      >
+    >({});
 
-      setRefreshing(true);
+  /*
+   * Menyimpan daftar token BOOSTED.
+   *
+   * Tidak perlu request boost API
+   * setiap 5 detik.
+   */
+  const boostedAddresses =
+    useRef<string[]>([]);
 
-      try {
-        const [latestResponse, topResponse] =
-          await Promise.all([
-            fetch(
-              "https://api.dexscreener.com/token-boosts/latest/v1",
-              {
-                cache: "no-store",
-              },
-            ),
-            fetch(
-              "https://api.dexscreener.com/token-boosts/top/v1",
-              {
-                cache: "no-store",
-              },
-            ),
-          ]);
+  /*
+   * =====================================================
+   * GET BOOSTED TOKENS
+   * =====================================================
+   */
+  const loadBoostedTokens =
+    async (): Promise<string[]> => {
+      const [topResponse, latestResponse] =
+        await Promise.all([
+          fetch(
+            "https://api.dexscreener.com/token-boosts/top/v1",
+            {
+              cache: "no-store",
+            },
+          ),
+
+          fetch(
+            "https://api.dexscreener.com/token-boosts/latest/v1",
+            {
+              cache: "no-store",
+            },
+          ),
+        ]);
+
+      if (
+        !topResponse.ok ||
+        !latestResponse.ok
+      ) {
+        throw new Error(
+          "Boost API request failed",
+        );
+      }
+
+      const top =
+        await topResponse.json();
+
+      const latest =
+        await latestResponse.json();
+
+      const combined = [
+        ...(Array.isArray(top)
+          ? top
+          : []),
+
+        ...(Array.isArray(latest)
+          ? latest
+          : []),
+      ];
+
+      /*
+       * Hanya Robinhood Chain.
+       *
+       * toLowerCase() digunakan supaya
+       * perbedaan kapitalisasi tidak
+       * menyebabkan token hilang.
+       */
+      const seen =
+        new Set<string>();
+
+      const addresses: string[] = [];
+
+      for (const token of combined) {
+        const chainId =
+          String(
+            token?.chainId || "",
+          ).toLowerCase();
+
+        const address =
+          String(
+            token?.tokenAddress || "",
+          );
 
         if (
-          !latestResponse.ok ||
-          !topResponse.ok
+          chainId ===
+            CHAIN.toLowerCase() &&
+          address &&
+          !seen.has(
+            address.toLowerCase(),
+          )
         ) {
-          throw new Error(
-            "DEX Screener boost API failed",
+          seen.add(
+            address.toLowerCase(),
           );
+
+          addresses.push(address);
         }
+      }
 
-        const latest = await latestResponse.json();
-        const top = await topResponse.json();
+      /*
+       * Maksimal 30 address
+       * untuk request market.
+       */
+      return addresses.slice(0, 30);
+    };
 
-        const combined: any[] = [
-          ...(Array.isArray(latest)
-            ? latest
-            : []),
-          ...(Array.isArray(top) ? top : []),
-        ];
+  /*
+   * =====================================================
+   * GET LIVE MARKET DATA
+   * =====================================================
+   */
+  const loadMarketData =
+    async (
+      addresses: string[],
+    ) => {
+      if (
+        addresses.length === 0
+      ) {
+        throw new Error(
+          "No boosted tokens",
+        );
+      }
 
-        const seen = new Set<string>();
-        const addresses: string[] = [];
-
-        for (const token of combined) {
-          if (
-            token?.chainId === CHAIN &&
-            token?.tokenAddress &&
-            !seen.has(token.tokenAddress)
-          ) {
-            seen.add(token.tokenAddress);
-            addresses.push(token.tokenAddress);
-          }
-        }
-
-        if (addresses.length === 0) {
-          throw new Error(
-            "No boosted tokens found",
-          );
-        }
-
-        const tokenResponse = await fetch(
-          `https://api.dexscreener.com/tokens/v1/${CHAIN}/${addresses
-            .slice(0, 10)
-            .join(",")}`,
+      /*
+       * Endpoint resmi data token.
+       *
+       * Ini yang kita gunakan untuk
+       * mendapatkan harga dan perubahan
+       * 24 jam token boosted.
+       */
+      const response =
+        await fetch(
+          `https://api.dexscreener.com/latest/dex/tokens/${addresses.join(",")}`,
           {
             cache: "no-store",
           },
         );
 
-        if (!tokenResponse.ok) {
-          throw new Error(
-            "DEX Screener token API failed",
-          );
+      if (!response.ok) {
+        throw new Error(
+          "Market API request failed",
+        );
+      }
+
+      const data =
+        await response.json();
+
+      /*
+       * Untuk setiap token,
+       * pilih pair dengan volume
+       * 24H terbesar.
+       */
+      const byToken: Record<
+        string,
+        any
+      > = {};
+
+      for (const pair of
+        data?.pairs || []) {
+        if (
+          String(
+            pair?.chainId || "",
+          ).toLowerCase() !==
+          CHAIN.toLowerCase()
+        ) {
+          continue;
         }
 
-        const data =
-          await tokenResponse.json();
+        const address =
+          String(
+            pair?.baseToken
+              ?.address || "",
+          ).toLowerCase();
 
-        const byToken: Record<string, any> = {};
-
-        for (const pair of data?.pairs || []) {
-          if (pair?.chainId !== CHAIN) {
-            continue;
-          }
-
-          const address =
-            pair?.baseToken?.address;
-
-          if (!address) continue;
-
-          const volume24h =
-            Number(pair?.volume?.h24) || 0;
-
-          if (
-            !byToken[address] ||
-            volume24h >
-              (byToken[address]._volume24h ||
-                0)
-          ) {
-            byToken[address] = {
-              ...pair,
-              _volume24h: volume24h,
-            };
-          }
+        if (!address) {
+          continue;
         }
 
-        const list: HotToken[] =
-          Object.values(byToken)
-            .sort(
-              (a: any, b: any) =>
-                (Number(
-                  b?.priceChange?.h24,
-                ) || 0) -
-                (Number(
-                  a?.priceChange?.h24,
-                ) || 0),
-            )
-            .slice(0, 6)
-            .map((pair: any) => ({
+        const volume =
+          Number(
+            pair?.volume?.h24,
+          ) || 0;
+
+        if (
+          !byToken[address] ||
+          volume >
+            (byToken[address]
+              ._volume24h || 0)
+        ) {
+          byToken[address] = {
+            ...pair,
+            _volume24h:
+              volume,
+          };
+        }
+      }
+
+      /*
+       * Buat list berdasarkan
+       * address boosted.
+       *
+       * Jadi token NON-BOOSTED
+       * tidak akan masuk.
+       */
+      const list: HotToken[] =
+        addresses
+          .map(
+            (address) =>
+              byToken[
+                address.toLowerCase()
+              ],
+          )
+          .filter(Boolean)
+          .map(
+            (pair: any) => ({
               name:
-                pair?.baseToken?.name ||
+                pair?.baseToken
+                  ?.name ||
                 "Unknown",
 
               symbol:
-                pair?.baseToken?.symbol ||
+                pair?.baseToken
+                  ?.symbol ||
                 "",
 
               icon:
-                pair?.info?.imageUrl ||
+                pair?.info
+                  ?.imageUrl ||
                 undefined,
 
               change:
-                typeof pair?.priceChange?.h24 ===
+                typeof pair
+                  ?.priceChange
+                  ?.h24 ===
                 "number"
-                  ? pair.priceChange.h24
+                  ? pair
+                      .priceChange
+                      .h24
                   : null,
 
               url:
                 pair?.url ||
                 `https://dexscreener.com/${CHAIN}`,
-            }));
+            }),
+          );
 
-        if (list.length === 0) {
+      /*
+       * Ranking berdasarkan
+       * performa 24H.
+       */
+      list.sort(
+        (a, b) =>
+          (b.change ?? -Infinity) -
+          (a.change ?? -Infinity),
+      );
+
+      /*
+       * Ambil 6 teratas.
+       */
+      return list.slice(0, 6);
+    };
+
+  /*
+   * =====================================================
+   * UPDATE DATA
+   * =====================================================
+   */
+  const updateMarket =
+    async () => {
+      try {
+        setRefreshing(true);
+
+        /*
+         * Kalau belum ada daftar boosted,
+         * ambil terlebih dahulu.
+         */
+        if (
+          boostedAddresses.current
+            .length === 0
+        ) {
+          boostedAddresses.current =
+            await loadBoostedTokens();
+        }
+
+        /*
+         * Ambil harga terbaru.
+         */
+        const list =
+          await loadMarketData(
+            boostedAddresses.current,
+          );
+
+        if (
+          list.length === 0
+        ) {
           throw new Error(
-            "No market data found",
+            "No boosted market data",
           );
         }
 
-        if (!cancelled) {
-          /*
-           * ==============================
-           * RANK MOVEMENT
-           * ==============================
-           */
+        /*
+         * =================================================
+         * RANK MOVEMENT
+         * =================================================
+         */
+        const newRanks: Record<
+          string,
+          number
+        > = {};
 
-          const newRanks: Record<
-            string,
-            number
-          > = {};
+        const newRankMovement: Record<
+          string,
+          "up" | "down" | "same"
+        > = {};
 
-          const newRankMovement: Record<
-            string,
-            "up" | "down" | "same"
-          > = {};
+        list.forEach(
+          (token, index) => {
+            const key =
+              token.symbol;
 
-          list.forEach((token, index) => {
-            const key = token.symbol;
+            const newRank =
+              index + 1;
 
-            newRanks[key] = index + 1;
+            newRanks[key] =
+              newRank;
 
             const oldRank =
-              previousRanks.current[key];
+              previousRanks.current[
+                key
+              ];
 
-            if (oldRank === undefined) {
-              newRankMovement[key] = "same";
-            } else if (
-              index + 1 < oldRank
+            if (
+              oldRank ===
+              undefined
             ) {
-              newRankMovement[key] = "up";
+              newRankMovement[
+                key
+              ] = "same";
             } else if (
-              index + 1 > oldRank
+              newRank <
+              oldRank
             ) {
-              newRankMovement[key] = "down";
+              newRankMovement[
+                key
+              ] = "up";
+            } else if (
+              newRank >
+              oldRank
+            ) {
+              newRankMovement[
+                key
+              ] = "down";
             } else {
-              newRankMovement[key] = "same";
+              newRankMovement[
+                key
+              ] = "same";
             }
-          });
+          },
+        );
 
-          previousRanks.current =
-            newRanks;
+        previousRanks.current =
+          newRanks;
 
-          setRankMovement(
-            newRankMovement,
-          );
+        setRankMovement(
+          newRankMovement,
+        );
 
-          /*
-           * ==============================
-           * PRICE MOVEMENT
-           * ==============================
-           *
-           * Kita menggunakan perubahan
-           * 24H sebagai indikator.
-           */
+        /*
+         * =================================================
+         * PRICE MOVEMENT
+         * =================================================
+         */
+        const newChanges: Record<
+          string,
+          number
+        > = {};
 
-          const newChanges: Record<
-            string,
-            number
-          > = {};
+        const newPriceMovement: Record<
+          string,
+          "up" | "down" | "same"
+        > = {};
 
-          const newPriceMovement: Record<
-            string,
-            "up" | "down" | "same"
-          > = {};
+        list.forEach(
+          (token) => {
+            const key =
+              token.symbol;
 
-          list.forEach((token) => {
-            const key = token.symbol;
             const current =
               token.change ?? 0;
 
-            newChanges[key] = current;
+            newChanges[key] =
+              current;
 
             const old =
-              previousChanges.current[key];
+              previousChanges.current[
+                key
+              ];
 
-            if (old === undefined) {
-              newPriceMovement[key] =
-                "same";
-            } else if (current > old) {
-              newPriceMovement[key] =
-                "up";
-            } else if (current < old) {
-              newPriceMovement[key] =
-                "down";
+            if (
+              old ===
+              undefined
+            ) {
+              newPriceMovement[
+                key
+              ] = "same";
+            } else if (
+              current > old
+            ) {
+              newPriceMovement[
+                key
+              ] = "up";
+            } else if (
+              current < old
+            ) {
+              newPriceMovement[
+                key
+              ] = "down";
             } else {
-              newPriceMovement[key] =
-                "same";
+              newPriceMovement[
+                key
+              ] = "same";
             }
-          });
+          },
+        );
 
-          previousChanges.current =
-            newChanges;
+        previousChanges.current =
+          newChanges;
 
-          setPriceMovement(
-            newPriceMovement,
-          );
+        setPriceMovement(
+          newPriceMovement,
+        );
 
-          setRows(list);
-          setFailed(false);
-          setLastUpdated(new Date());
-        }
+        /*
+         * Update UI.
+         */
+        setRows(list);
+
+        setFailed(false);
+
+        setLastUpdated(
+          new Date(),
+        );
       } catch (error) {
         console.error(
-          "Hot Tokens error:",
+          "Hot Tokens:",
           error,
         );
 
+        /*
+         * Jangan menghapus data lama
+         * kalau request berikutnya gagal.
+         */
         if (
-          !cancelled &&
           !rows
         ) {
           setFailed(true);
         }
       } finally {
-        if (!cancelled) {
-          setRefreshing(false);
-        }
+        setRefreshing(false);
       }
     };
 
-    /*
-     * Initial load
-     */
-    loadHotTokens();
+  /*
+   * =====================================================
+   * INITIAL + AUTO REFRESH
+   * =====================================================
+   */
+  useEffect(() => {
+    let cancelled =
+      false;
 
     /*
-     * Auto refresh setiap 5 detik
+     * Initial request.
      */
-    const interval = setInterval(
-      loadHotTokens,
-      5000,
-    );
+    updateMarket();
+
+    /*
+     * Harga:
+     * setiap 5 detik.
+     */
+    const marketInterval =
+      setInterval(
+        () => {
+          if (!cancelled) {
+            updateMarket();
+          }
+        },
+        5000,
+      );
+
+    /*
+     * Daftar BOOSTED:
+     * setiap 30 detik.
+     *
+     * Kita tidak mengambil boost
+     * API setiap 5 detik agar
+     * tidak membuang rate limit.
+     */
+    const boostInterval =
+      setInterval(
+        async () => {
+          if (cancelled) {
+            return;
+          }
+
+          try {
+            const addresses =
+              await loadBoostedTokens();
+
+            if (
+              addresses.length > 0
+            ) {
+              boostedAddresses.current =
+                addresses;
+
+              await updateMarket();
+            }
+          } catch (error) {
+            console.error(
+              "Boost refresh:",
+              error,
+            );
+          }
+        },
+        30000,
+      );
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+
+      clearInterval(
+        marketInterval,
+      );
+
+      clearInterval(
+        boostInterval,
+      );
     };
   }, []);
 
   return (
     <div className="panel mb-10 text-left">
+      {/* ========================================= */}
+      {/* HEADER */}
+      {/* ========================================= */}
+
       <div className="panel-head">
         <span
           className={`t-dot ${
@@ -500,189 +767,244 @@ function HotTokens() {
           }`}
         />
 
-        ROBINHOOD CHAIN · HOT 24H
+        ROBINHOOD CHAIN · BOOSTED
 
         <span
-          className={`ml-auto font-mono text-[0.62rem] ${
-            refreshing
-              ? "animate-pulse text-led"
-              : "text-dim"
-          }`}
+          className={`
+            ml-auto
+            font-mono
+            text-[0.62rem]
+            ${
+              refreshing
+                ? "animate-pulse text-led"
+                : "text-led"
+            }
+          `}
         >
           ● LIVE
         </span>
       </div>
 
+      {/* ========================================= */}
+      {/* LIST */}
+      {/* ========================================= */}
+
       <div className="flex flex-col">
-        {!rows && !failed && (
-          <div className="py-3 text-center font-mono text-[0.78rem] text-dim">
-            connecting to live market data
-            <Cursor />
-          </div>
-        )}
+        {!rows &&
+          !failed && (
+            <div className="py-4 text-center font-mono text-[0.78rem] text-dim">
+              loading boosted tokens
+              <Cursor />
+            </div>
+          )}
 
         {failed && (
-          <div className="py-3 text-center text-[0.78rem] leading-relaxed text-dim">
-            No live boosted tokens on
-            Robinhood Chain right now.
+          <div className="py-4 text-center text-[0.78rem] leading-relaxed text-dim">
+            Unable to load boosted
+            tokens right now.
+            <br />
+            Retrying automatically...
           </div>
         )}
 
-        {rows?.map((token, index) => {
-          const key = token.symbol;
+        {rows?.map(
+          (
+            token,
+            index,
+          ) => {
+            const key =
+              token.symbol;
 
-          const rank =
-            rankMovement[key] || "same";
+            const rank =
+              rankMovement[
+                key
+              ] || "same";
 
-          const price =
-            priceMovement[key] || "same";
+            const price =
+              priceMovement[
+                key
+              ] || "same";
 
-          return (
-            <a
-              key={`${token.symbol}-${index}`}
-              href={token.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`
-                group
-                flex
-                items-center
-                gap-2.5
-                border-b
-                border-line
-                py-[10px]
-                transition-all
-                duration-500
-                last:border-b-0
-                ${
-                  price === "up"
-                    ? "bg-led/5"
-                    : price === "down"
-                      ? "bg-down/5"
-                      : ""
-                }
-              `}
-            >
-              {/* RANK */}
-              <span
+            return (
+              <a
+                key={`${token.symbol}-${index}`}
+                href={token.url}
+                target="_blank"
+                rel="noopener noreferrer"
                 className={`
+                  group
                   flex
-                  w-7
-                  shrink-0
                   items-center
-                  gap-1
-                  font-mono
-                  text-[0.72rem]
+                  gap-2.5
+                  border-b
+                  border-line
+                  py-[10px]
                   transition-all
                   duration-500
+                  last:border-b-0
+
                   ${
-                    rank === "up"
-                      ? "translate-y-[-2px] text-led"
-                      : rank === "down"
-                        ? "translate-y-[2px] text-down"
-                        : "text-dim"
-                  }
-                `}
-              >
-                {index + 1}
-
-                {rank === "up" && (
-                  <span className="text-[0.65rem]">
-                    ▲
-                  </span>
-                )}
-
-                {rank === "down" && (
-                  <span className="text-[0.65rem]">
-                    ▼
-                  </span>
-                )}
-              </span>
-
-              {/* TOKEN ICON */}
-              {token.icon ? (
-                <img
-                  src={token.icon}
-                  alt=""
-                  loading="lazy"
-                  className="
-                    h-[22px]
-                    w-[22px]
-                    shrink-0
-                    rounded-full
-                    object-cover
-                    transition-transform
-                    duration-500
-                    group-hover:scale-110
-                  "
-                />
-              ) : (
-                <div
-                  className="
-                    h-[22px]
-                    w-[22px]
-                    shrink-0
-                    rounded-full
-                    border
-                    border-line
-                    bg-surface
-                  "
-                />
-              )}
-
-              {/* NAME */}
-              <span className="flex-1 truncate text-[0.9rem] font-medium">
-                {token.name}
-
-                <span className="ml-1 font-mono text-[0.7rem] text-dim">
-                  {token.symbol}
-                </span>
-              </span>
-
-              {/* PRICE CHANGE */}
-              <span
-                className={`
-                  flex
-                  shrink-0
-                  items-center
-                  gap-1
-                  font-mono
-                  text-[0.78rem]
-                  transition-all
-                  duration-500
-                  ${
-                    token.change === null
-                      ? "text-dim"
-                      : token.change >= 0
-                        ? "text-led"
-                        : "text-down"
-                  }
-                `}
-              >
-                {price === "up" && (
-                  <span className="animate-bounce text-[0.65rem]">
-                    ▲
-                  </span>
-                )}
-
-                {price === "down" && (
-                  <span className="animate-bounce text-[0.65rem]">
-                    ▼
-                  </span>
-                )}
-
-                {token.change === null
-                  ? "—"
-                  : `${
-                      token.change >= 0
-                        ? "+"
+                    price ===
+                    "up"
+                      ? "bg-led/5"
+                      : price ===
+                          "down"
+                        ? "bg-down/5"
                         : ""
-                    }${token.change.toFixed(1)}%`}
-              </span>
-            </a>
-          );
-        })}
+                  }
+                `}
+              >
+                {/* RANK */}
+
+                <span
+                  className={`
+                    flex
+                    w-7
+                    shrink-0
+                    items-center
+                    gap-1
+                    font-mono
+                    text-[0.72rem]
+                    transition-all
+                    duration-500
+
+                    ${
+                      rank ===
+                      "up"
+                        ? "text-led"
+                        : rank ===
+                            "down"
+                          ? "text-down"
+                          : "text-dim"
+                    }
+                  `}
+                >
+                  {index + 1}
+
+                  {rank ===
+                    "up" && (
+                    <span className="animate-bounce text-[0.62rem]">
+                      ▲
+                    </span>
+                  )}
+
+                  {rank ===
+                    "down" && (
+                    <span className="animate-bounce text-[0.62rem]">
+                      ▼
+                    </span>
+                  )}
+                </span>
+
+                {/* ICON */}
+
+                {token.icon ? (
+                  <img
+                    src={
+                      token.icon
+                    }
+                    alt=""
+                    loading="lazy"
+                    className="
+                      h-[22px]
+                      w-[22px]
+                      shrink-0
+                      rounded-full
+                      object-cover
+                      transition-transform
+                      duration-300
+                      group-hover:scale-110
+                    "
+                  />
+                ) : (
+                  <div
+                    className="
+                      h-[22px]
+                      w-[22px]
+                      shrink-0
+                      rounded-full
+                      border
+                      border-line
+                      bg-surface
+                    "
+                  />
+                )}
+
+                {/* NAME */}
+
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[0.9rem] font-medium">
+                    {token.name}
+                  </span>
+
+                  <span className="mt-[1px] flex items-center gap-1.5 font-mono text-[0.62rem] text-dim">
+                    {token.symbol}
+
+                    <span className="rounded border border-led/40 px-1 text-[0.52rem] text-led">
+                      BOOST
+                    </span>
+                  </span>
+                </span>
+
+                {/* PRICE CHANGE */}
+
+                <span
+                  className={`
+                    flex
+                    shrink-0
+                    items-center
+                    gap-1
+                    font-mono
+                    text-[0.78rem]
+                    transition-all
+                    duration-500
+
+                    ${
+                      token.change ===
+                      null
+                        ? "text-dim"
+                        : token.change >=
+                            0
+                          ? "text-led"
+                          : "text-down"
+                    }
+                  `}
+                >
+                  {price ===
+                    "up" && (
+                    <span className="animate-bounce text-[0.62rem]">
+                      ▲
+                    </span>
+                  )}
+
+                  {price ===
+                    "down" && (
+                    <span className="animate-bounce text-[0.62rem]">
+                      ▼
+                    </span>
+                  )}
+
+                  {token.change ===
+                  null
+                    ? "—"
+                    : `${
+                        token.change >=
+                        0
+                          ? "+"
+                          : ""
+                      }${token.change.toFixed(
+                        1,
+                      )}%`}
+                </span>
+              </a>
+            );
+          },
+        )}
       </div>
+
+      {/* ========================================= */}
+      {/* DEXSCREENER */}
+      {/* ========================================= */}
 
       <a
         href="https://dexscreener.com/robinhood"
@@ -706,12 +1028,17 @@ function HotTokens() {
           hover:bg-surface-hover
         "
       >
-        View all on DexScreener
+        View all boosted tokens
       </a>
 
-      <div className="mt-2.5 flex items-center justify-between gap-2 font-mono text-[0.64rem] text-dim opacity-70">
+      {/* ========================================= */}
+      {/* FOOTER */}
+      {/* ========================================= */}
+
+      <div className="mt-2.5 flex items-center justify-between gap-2 font-mono text-[0.62rem] text-dim opacity-70">
         <span>
-          source: dexscreener · auto refresh 5s
+          boosted tokens · live market
+          data
         </span>
 
         <span className="shrink-0">
@@ -729,13 +1056,8 @@ function HotTokens() {
       </div>
     </div>
   );
-          }
-
-
-          
-              
-
-          
+}
+            
 function Index() {
   const [copyLabel, setCopyLabel] = useState("Copy");
 
