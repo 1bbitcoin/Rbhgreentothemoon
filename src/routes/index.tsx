@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import logo from "@/assets/aibox-logo.jpg.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -222,7 +223,7 @@ function HotTokens() {
         {failed && (
           <div className="py-1.5 text-[0.78rem] leading-relaxed text-dim">
             No live boosted tokens on Robinhood Chain right now.{" "}
-            
+            <a
               href="https://dexscreener.com/robinhood"
               target="_blank"
               rel="noopener"
@@ -233,7 +234,7 @@ function HotTokens() {
           </div>
         )}
         {rows?.map((t, i) => (
-          
+          <a
             key={t.url + i}
             href={t.url}
             target="_blank"
@@ -265,7 +266,7 @@ function HotTokens() {
           </a>
         ))}
       </div>
-      
+      <a
         href="https://dexscreener.com/robinhood"
         target="_blank"
         rel="noopener"
@@ -296,7 +297,7 @@ function Index() {
       </div>
 
       <div className="relative mb-[26px] h-[132px] w-[132px] overflow-hidden rounded-full border-2 border-neon shadow-glow">
-        <img src="/aibox-logo.jpg" alt="AIBOX logo" className="block h-full w-full object-cover" />
+        <img src={logo.url} alt="AIBOX logo" className="block h-full w-full object-cover" />
       </div>
 
       <div className="mb-5 rounded-full border border-neon px-4 py-1.5 font-mono text-[0.85rem] tracking-wide text-neon">
@@ -324,13 +325,13 @@ function Index() {
       </div>
 
       <div className="mb-11 flex w-full max-w-[460px] flex-wrap justify-center gap-3">
-        
+        <a
           href="#"
           className="min-w-[130px] flex-auto rounded-xl bg-neon px-[18px] py-[15px] text-[0.98rem] font-bold text-background shadow-glow"
         >
           Buy on Pons
         </a>
-        
+        <a
           href="#"
           className="min-w-[130px] flex-auto rounded-xl border border-line bg-surface px-[18px] py-[15px] text-[0.98rem] font-bold transition-colors hover:border-led hover:text-led"
         >
@@ -374,7 +375,7 @@ function Index() {
           ["Telegram", "https://t.me/aiboxcrypto"],
           ["Dexscreener", "#"],
         ].map(([label, href]) => (
-          
+          <a
             key={label}
             href={href}
             target="_blank"
@@ -390,7 +391,7 @@ function Index() {
         <div className="mb-2 font-mono text-[0.72rem] uppercase tracking-wide text-dim">
           Contact / Partnerships
         </div>
-        
+        <a
           href="mailto:join@getaibox.xyz"
           className="inline-block font-mono text-[0.95rem] font-semibold text-neon transition-colors hover:text-led"
         >
@@ -410,4 +411,4 @@ function Index() {
       </footer>
     </main>
   );
-                }
+    }
