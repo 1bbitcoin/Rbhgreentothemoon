@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import logo from "@/public/aibox-logo.jpg";
+import logo from "@/assets/aibox-logo.jpg.asset.json";
 
 export const Route = createFileRoute("/")({
   head: () => ({
