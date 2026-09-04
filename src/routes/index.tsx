@@ -1133,23 +1133,25 @@ function Index() {
         </button>
       </div>
 
-      <div className="mb-11 flex w-full max-w-[460px] flex-wrap justify-center gap-3">
-        <a
-          href="#"
-          className="min-w-[130px] flex-auto rounded-xl bg-neon px-[18px] py-[15px] text-[0.98rem] font-bold text-background shadow-glow"
-        >
-          Buy on Pons
-        </a>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <a
+    href={PONS_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex items-center justify-center rounded-2xl bg-lime-400 px-6 py-6 text-xl font-bold text-black transition hover:scale-[1.02] hover:bg-lime-300"
+  >
+    Buy on Pons ↗
+  </a>
 
-        <a
-          href="https://dexscreener.com/robinhood"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="min-w-[130px] flex-auto rounded-xl border border-line bg-surface px-[18px] py-[15px] text-[0.98rem] font-bold transition-colors hover:border-led hover:text-led"
-        >
-          Dexscreener
-        </a>
-      </div>
+  <a
+    href={DEXSCREENER_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="flex items-center justify-center rounded-2xl border border-white/15 bg-black px-6 py-6 text-xl font-bold text-white transition hover:scale-[1.02] hover:border-lime-400 hover:text-lime-400"
+  >
+    Dexscreener ↗
+  </a>
+</div>
 
       <Terminal />
 
