@@ -1138,7 +1138,7 @@ function Index() {
     href={PONS_URL}
     target="_blank"
     rel="noopener noreferrer"
-    className="flex items-center justify-center rounded-2xl bg-lime-400 px-6 py-6 text-xl font-bold text-black transition hover:scale-[1.02] hover:bg-lime-300"
+    className="flex items-center justify-center rounded-2xl bg-neon px-6 py-6 text-xl font-bold text-black transition hover:scale-[1.02] hover:bg-lime-300"
   >
     Buy on Pons ↗
   </a>
