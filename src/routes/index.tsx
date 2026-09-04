@@ -70,7 +70,18 @@ const ASK_REPLIES = [
 ];
 
 const CHAIN = "robinhood";
-const CA_VALUE = "coming soon";
+const CA_VALUE = "0x7b26047aEf3ebbfa9cdC38E064E4e7CF953710Ee";
+
+const PONS_URL = [
+  "https:",
+  "",
+  "www.ponsfamily.com",
+  "launchpad",
+  CA_VALUE,
+].join("/");
+
+const DEXSCREENER_URL =
+  "https://dexscreener.com/search?q=" + CA_VALUE;
 
 type HotToken = {
   name: string;
